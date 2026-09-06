@@ -1,0 +1,73 @@
+# Maintainer: <you>
+# AUR-friendly PKGBUILD for raycast-linux (CachyOS / Arch)
+#
+# Local build (from the repo root):
+#   ./packaging/build-source.sh     # writes packaging/raycast-linux-<ver>.tar.gz
+#   cd packaging && makepkg -si
+#
+# For an AUR submission:
+#   - point source= at a real release tarball / git clone URL,
+#   - replace sha256sums=(SKIP) with the actual checksum,
+#   - add a valid url= above.
+#
+# Design: the app code lives in a venv under /opt/raycast-linux (PEP 668
+# safe on Arch); its Python runtime dependencies are ordinary Arch packages
+# (python-fastapi, python-uvicorn, …) pulled in via depends=.
+
+pkgname=raycast-linux
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="Raycast-style launcher and productivity hub for Linux (native GTK4 + Python)"
+arch=(any)
+url="https://example.invalid/raycast-linux"  # ← set to your real repository URL
+license=(MIT)
+depends=(
+  python
+  python-venv
+  python-gobject        # PyGObject (gi)
+  gtk4
+  python-fastapi
+  python-uvicorn
+  python-httpx
+  python-pydantic
+  wl-clipboard          # wl-copy / wl-paste (Wayland clipboard)
+  wtype                 # auto-typing into the focused window (Wayland)
+  xdg-utils             # xdg-open fallback for opening files
+)
+makedepends=(
+  python-pip
+  python-setuptools
+)
+optdepends=(
+  "python-dbus: XDG GlobalShortcuts portal registration (Super+Space on GNOME/KDE)"
+  "libnotify: toast notifications"
+  "sway: window tiling bridge on Sway (swaymsg)"
+  "hyprland: window tiling bridge on Hyprland (hyprctl)"
+  "xdotool: window tiling on X11"
+  "wmctrl: next/previous window cycling on X11"
+  "xclip: clipboard support on X11"
+)
+source=("$pkgname-$pkgver.tar.gz")
+sha256sums=(SKIP)  # local builds: tarball produced by build-source.sh
+
+package() {
+  # App code → venv under /opt (PEP 668 safe). Runtime Python deps come
+  # from the Arch packages in depends=, so --no-deps here.
+  python -m venv --system-site-packages "$pkgdir/opt/$pkgname/.venv"
+  "$pkgdir/opt/$pkgname/.venv/bin/pip" install \
+    --no-deps --no-build-isolation --quiet "$srcdir/$pkgname-$pkgver"
+
+  # Wrapper on PATH
+  install -d "$pkgdir/usr/bin"
+  cat > "$pkgdir/usr/bin/$pkgname" <<'EOF'
+#!/bin/sh
+exec /opt/raycast-linux/.venv/bin/python -m raycast_linux "$@"
+EOF
+  chmod 755 "$pkgdir/usr/bin/$pkgname"
+
+  # Desktop entry + icon
+  install -Dm644 "$srcdir/$pkgname-$pkgver/files/raycast-linux.desktop" \
+    "$pkgdir/usr/share/applications/raycast-linux.desktop"
+  install -Dm644 "$srcdir/$pkgname-$pkgver/files/raycast-linux.svg" \
+    "$pkgdir/usr/share/icons/hicolor/scalable/apps/raycast-linux.svg"
+}

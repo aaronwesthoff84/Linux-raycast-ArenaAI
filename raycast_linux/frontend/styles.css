@@ -1,0 +1,151 @@
+/* raycast-linux — dark, Raycast-flavoured theme */
+
+/* ------------------------------------------------ palette window */
+.palette-root {
+  background-color: #191922;
+  color: #e8e8f2;
+  border-radius: 14px;
+  padding: 8px 8px 4px;
+}
+
+.palette-input-row {
+  padding: 6px 6px 8px;
+}
+
+.search-icon {
+  color: #8a8aa2;
+  font-size: 18px;
+}
+
+entry.palette-entry {
+  background-color: #262637;
+  background-image: none;
+  color: #f2f2fa;
+  border: none;
+  border-radius: 10px;
+  padding: 10px 14px;
+  caret-color: #8b7cf6;
+  font-size: 14px;
+  box-shadow: none;
+}
+entry.palette-entry:focus {
+  box-shadow: 0 0 0 2px #6d5ce8;
+}
+entry.palette-entry image.left {
+  color: #8a8aa2;
+}
+entry.palette-entry image.right {
+  color: #8a8aa2;
+}
+
+.palette-chips {
+  padding: 2px 6px 8px;
+}
+
+button.chip {
+  background: none;
+  background-image: none;
+  border: none;
+  box-shadow: none;
+  outline: none;
+  border-radius: 999px;
+  padding: 3px 12px;
+  min-height: 0;
+  min-width: 0;
+  color: #9a9ab6;
+  font-size: 11px;
+}
+button.chip:hover {
+  background-color: #26263a;
+}
+button.chip.active {
+  background-color: #343452;
+  color: #f2f2fa;
+}
+
+.palette-list {
+  background: none;
+}
+
+listbox.palette-list row.result-row {
+  background: none;
+  border-radius: 10px;
+  margin: 1px 2px;
+}
+listbox.palette-list row.result-row:hover {
+  background-color: #23232f;
+}
+listbox.palette-list row.result-row.selected {
+  background-color: #2e2e4a;
+}
+
+.row-icon {
+  color: #b9b9d0;
+}
+
+.row-title {
+  color: #ededf6;
+  font-size: 13px;
+  font-weight: 600;
+}
+.row-subtitle {
+  color: #8f8fae;
+  font-size: 11px;
+}
+.row-kind {
+  color: #5f5f7d;
+  font-size: 9px;
+  letter-spacing: 1.5px;
+}
+
+.palette-status {
+  color: #73738f;
+  font-size: 10px;
+  padding: 6px 10px 6px;
+}
+
+/* ------------------------------------------------ settings window */
+.settings-root {
+  background-color: #191922;
+}
+
+.settings-section {
+  border: 1px solid #2a2a3c;
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.settings-title {
+  color: #b9b9d6;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.settings-key {
+  color: #73738f;
+  font-size: 12px;
+}
+.settings-value {
+  color: #e8e8f2;
+  font-size: 12px;
+}
+.settings-hint {
+  color: #73738f;
+  font-size: 11px;
+}
+
+.snip-list {
+  background: none;
+}
+listbox.snip-list row {
+  padding: 6px 8px;
+  border-radius: 8px;
+}
+listbox.snip-list row:hover {
+  background-color: #23232f;
+}
+listbox.snip-list row:selected {
+  background-color: #2e2e4a;
+}

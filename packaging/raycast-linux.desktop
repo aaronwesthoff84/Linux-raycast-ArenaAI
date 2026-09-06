@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Raycast Linux
+GenericName=Launcher
+Comment=Raycast-style launcher and productivity hub for Linux
+Exec=raycast-linux
+Icon=raycast-linux
+Terminal=false
+Categories=Utility;DeveloperTools;
+Keywords=launcher;search;clipboard;snippets;productivity;
+StartupNotify=true
