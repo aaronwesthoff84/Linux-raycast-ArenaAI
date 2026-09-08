@@ -160,7 +160,9 @@ class SettingsWindow(Gtk.ApplicationWindow):
         if not r:
             return
         for key in ["display_server", "window_manager", "window_provider", "data_dir", "version"]:
-            setattr(self, f"_plat_{key}", ).set_text(str(r.get(key, "—")))
+            lbl = getattr(self, f"_plat_{key}", None)
+            if lbl is not None:
+                lbl.set_text(str(r.get(key, "—")))
 
     def _on_shortcuts(self, r: dict | None) -> None:
         if not r:
