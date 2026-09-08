@@ -8,11 +8,18 @@ PY="${PYTHON:-python3}"
 REAL="$(pwd)"
 
 echo "→ creating venv ($REAL/.venv)"
-"$PY" -m venv .venv
+"$PY" -m venv --system-site-packages .venv
 # shellcheck disable=SC1091
 source .venv/bin/activate
 pip install -q -U pip
 pip install -q -e .
+
+echo "→ verifying system GTK bindings in venv"
+if ! "$REAL/.venv/bin/python" -c "import gi; gi.require_version('Gtk', '4.0'); from gi.repository import Gtk" 2>/dev/null; then
+  echo "⚠ warning: PyGObject / GTK4 is not importable from .venv." >&2
+  echo "  On Arch/CachyOS: sudo pacman -S python-gobject gtk4" >&2
+  echo "  On Debian/Ubuntu: sudo apt install python3-gi gir1.2-gtk-4.0" >&2
+fi
 
 BIN_DIR="${XDG_BIN_HOME:-$HOME/.local/bin}"
 mkdir -p "$BIN_DIR"
