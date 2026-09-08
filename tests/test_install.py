@@ -19,15 +19,22 @@ def test_venv_system_site_packages_strategy(tmp_path):
     assert "include-system-site-packages = true" in cfg_content.lower()
 
     if sys.platform != "win32":
-        python_bin = venv_dir / "bin" / "python"
-        # Test that gi is importable from this venv
-        res = subprocess.run(
-            [str(python_bin), "-c", "import gi; gi.require_version('Gtk', '4.0'); from gi.repository import Gtk; print('OK')"],
-            capture_output=True,
-            text=True,
-        )
-        assert res.returncode == 0
-        assert "OK" in res.stdout
+        try:
+            import gi
+            has_gi = True
+        except (ImportError, ModuleNotFoundError):
+            has_gi = False
+
+        if has_gi:
+            python_bin = venv_dir / "bin" / "python"
+            # Test that gi is importable from this venv
+            res = subprocess.run(
+                [str(python_bin), "-c", "import gi; gi.require_version('Gtk', '4.0'); from gi.repository import Gtk; print('OK')"],
+                capture_output=True,
+                text=True,
+            )
+            assert res.returncode == 0
+            assert "OK" in res.stdout
 
 
 def test_install_script_contains_system_site_packages():
