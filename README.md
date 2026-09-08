@@ -217,35 +217,52 @@ curl -s -X POST http://127.0.0.1:$(python3 -c "import json;print(json.load(open(
 ## Data & state
 
 * `~/.local/share/raycast-linux/` — `snippets.json`, `clipboard.json`
-* `~/.local/state/raycast-linux/api.json` — live instance pid + port
+* `~/.local/state/raycast-linux/api.json` : live instance pid and port
+
+### Graphical Setup
+
+Open the setup and diagnostic window anytime:
+```bash
+raycast-linux setup
+```
+This verifies your display server, Wayland tools, global shortcut portal, and provides one-click autostart configuration.
+
+### Updates
+
+To update an existing installation while preserving all user data (snippets, chat history, configuration):
+
+```bash
+# Source install:
+git pull origin main
+./install.sh
+
+# CachyOS / Arch package:
+yay -Syu raycast-linux
+```
 
 ### Uninstall
 
 ```bash
-# pacman (PKGBUILD install):
+# Clean uninstall (preserves all snippets, clipboard, and chat history):
+./uninstall.sh
+
+# Full purge (also deletes user data directories):
+./uninstall.sh --purge
+
+# When installed as a pacman system package:
 sudo pacman -Rns raycast-linux
-
-# venv install:
-rm -rf <repo>/.venv ~/.local/bin/raycast-linux \
-   ~/.local/share/applications/raycast-linux.desktop
-
-# your data (optional):
-rm -rf ~/.local/share/raycast-linux ~/.local/state/raycast-linux
 ```
 
 ## Packaging
 
-**CachyOS / Arch — pacman-tracked (recommended here):**
+**CachyOS / Arch (pacman-tracked):**
 
 ```bash
-./packaging/build-source.sh     # creates packaging/raycast-linux-1.0.0.tar.gz
-cd packaging && makepkg -si     # builds + installs; runtime deps come from
-                                # pacman (python-fastapi, gtk4, …)
-# afterwards: pacman -Qi raycast-linux · pacman -Rns raycast-linux
+./packaging/build-source.sh     # creates packaging/raycast-linux-1.0.0.tar.gz and SHA256SUMS
+cd packaging && makepkg -si     # builds and installs; dependencies come from pacman
 ```
 
-The PKGBUILD is AUR-ready — set a real `url=` and replace
-`sha256sums=(SKIP)` with a checksum before submitting.
+See [docs/cachyos_packaging.md](docs/cachyos_packaging.md) for complete packaging architecture and distribution details.
 
 **Other formats:**
 

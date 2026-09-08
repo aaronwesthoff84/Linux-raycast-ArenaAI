@@ -30,6 +30,11 @@ def _cmd_app(args: argparse.Namespace) -> int:
     return run_gui(show_settings=args.settings)
 
 
+def _cmd_setup(args: argparse.Namespace) -> int:
+    from .main import run_gui
+    return run_gui(show_setup=True)
+
+
 def _cmd_server(args: argparse.Namespace) -> int:
     import os
     import signal
@@ -168,6 +173,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("toggle", help="toggle the palette of a running instance").set_defaults(func=_cmd_toggle)
     sub.add_parser("env", help="print the detected environment as JSON").set_defaults(func=_cmd_env)
     sub.add_parser("doctor", help="check display server, WM, tools and dependencies").set_defaults(func=_cmd_doctor)
+    sub.add_parser("setup", help="open graphical setup and diagnostics window").set_defaults(func=_cmd_setup)
 
     args = parser.parse_args(argv)
     if args.version:
