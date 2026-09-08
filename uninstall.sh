@@ -5,14 +5,19 @@
 set -euo pipefail
 
 PURGE=0
+KEEP_VENV=0
 for arg in "$@"; do
   case "$arg" in
     --purge)
       PURGE=1
       ;;
+    --keep-venv)
+      KEEP_VENV=1
+      ;;
     -h|--help)
-      echo "Usage: $0 [--purge]"
+      echo "Usage: $0 [--purge] [--keep-venv]"
       echo "  --purge: also delete all user data (snippets, clipboard, chat history)"
+      echo "  --keep-venv: preserve local .venv environment"
       exit 0
       ;;
   esac
@@ -38,7 +43,7 @@ echo "→ Removing autostart entry if present: $AUTOSTART_DIR/raycast-linux.desk
 rm -f "$AUTOSTART_DIR/raycast-linux.desktop"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-if [ -d "$SCRIPT_DIR/.venv" ]; then
+if [ "$KEEP_VENV" -eq 0 ] && [ -z "${RAYCAST_TESTING:-}" ] && [ -d "$SCRIPT_DIR/.venv" ]; then
   echo "→ Removing local virtual environment: $SCRIPT_DIR/.venv"
   rm -rf "$SCRIPT_DIR/.venv"
 fi

@@ -13,6 +13,13 @@ echo "→ creating venv ($REAL/.venv)"
 source .venv/bin/activate
 pip install -q -U pip
 pip install -q -e ".[dev]"
+if [ ! -f .venv/bin/pytest ]; then
+  cat > .venv/bin/pytest <<'EOF'
+#!/bin/sh
+exec "$(dirname "$0")/python" -m pytest "$@"
+EOF
+  chmod +x .venv/bin/pytest
+fi
 
 echo "→ verifying system GTK bindings in venv"
 if ! "$REAL/.venv/bin/python" -c "import gi; gi.require_version('Gtk', '4.0'); from gi.repository import Gtk" 2>/dev/null; then

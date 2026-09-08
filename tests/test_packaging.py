@@ -38,9 +38,11 @@ def test_desktop_entry_validity():
 
 def _run_script(script_path: Path, args: list[str], env: dict) -> subprocess.CompletedProcess:
     import sys
+    env = env.copy()
+    env["RAYCAST_TESTING"] = "1"
     if sys.platform == "win32":
         wsl_script = "/mnt/" + str(script_path)[0].lower() + str(script_path)[2:].replace("\\", "/")
-        wsl_env = []
+        wsl_env = ["RAYCAST_TESTING=1"]
         for k in ("XDG_BIN_HOME", "XDG_DATA_HOME", "XDG_CONFIG_HOME"):
             if k in env:
                 v = env[k]
