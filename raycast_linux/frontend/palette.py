@@ -331,6 +331,7 @@ class PaletteWindow(Gtk.Window):
     def _static_settings_items(self) -> list[dict]:
         return [
             self._command_item("open-chat", "Open agent chat", "Chat with Hermes agent"),
+            self._command_item("open-setup", "Setup and diagnostics", "System check, autostart, updates"),
             self._command_item("open-settings", "Open settings", "Preferences, snippets, shortcuts"),
             self._command_item("clear-clipboard", "Clear clipboard history", "Delete all stored clipboard items"),
             self._command_item("refresh-files", "Rebuild file index", "Scan $HOME again"),
@@ -508,6 +509,9 @@ class PaletteWindow(Gtk.Window):
     def _run_command(self, id_: str) -> None:
         if id_ == "open-settings":
             self.app.open_settings()
+            self.hide()
+        elif id_ == "open-setup":
+            self.app.open_setup()
             self.hide()
         elif id_ == "open-chat":
             self.app.open_chat()

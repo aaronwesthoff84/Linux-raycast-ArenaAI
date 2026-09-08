@@ -10,16 +10,18 @@ from .api_client import ApiClient
 from .chat_window import ChatWindow
 from .palette import PaletteWindow
 from .settings import SettingsWindow
+from .setup_window import SetupWindow
 
 _CSS_PATH = os.path.join(os.path.dirname(__file__), "styles.css")
 
 
 class RaycastLinuxApp(Gtk.Application):
-    def __init__(self, hub, port: int, show_settings: bool = False) -> None:
+    def __init__(self, hub, port: int, show_settings: bool = False, show_setup: bool = False) -> None:
         super().__init__(application_id="dev.arena.RaycastLinux")
         self.hub = hub
         self.port = port
         self.show_settings = show_settings
+        self.show_setup = show_setup
         self.api = ApiClient(f"http://127.0.0.1:{port}")
 
         # API thread → GTK main thread
@@ -30,6 +32,7 @@ class RaycastLinuxApp(Gtk.Application):
         self.palette: PaletteWindow | None = None
         self.settings_win: SettingsWindow | None = None
         self.chat_win: ChatWindow | None = None
+        self.setup_win: SetupWindow | None = None
 
     # -- Gtk.Application vfunc overrides ---------------------------------
     def do_startup(self) -> None:
@@ -44,6 +47,8 @@ class RaycastLinuxApp(Gtk.Application):
         self.palette = PaletteWindow(self)
         if self.show_settings:
             self.open_settings()
+        if self.show_setup:
+            self.open_setup()
 
     def do_activate(self) -> None:
         assert self.palette is not None
@@ -71,6 +76,11 @@ class RaycastLinuxApp(Gtk.Application):
         if self.chat_win is None:
             self.chat_win = ChatWindow(self)
         self.chat_win.present()
+
+    def open_setup(self) -> None:
+        if self.setup_win is None:
+            self.setup_win = SetupWindow(self)
+        self.setup_win.present()
 
     def notify(self, summary: str, body: str = "") -> None:
         try:

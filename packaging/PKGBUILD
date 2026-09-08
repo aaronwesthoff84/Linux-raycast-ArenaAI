@@ -1,33 +1,30 @@
-# Maintainer: <you>
+# Maintainer: Aaron Westhoff <aaronwesthoff84@gmail.com>
 # AUR-friendly PKGBUILD for raycast-linux (CachyOS / Arch)
 #
 # Local build (from the repo root):
 #   ./packaging/build-source.sh     # writes packaging/raycast-linux-<ver>.tar.gz
 #   cd packaging && makepkg -si
 #
-# For an AUR submission:
-#   - point source= at a real release tarball / git clone URL,
-#   - replace sha256sums=(SKIP) with the actual checksum,
-#   - add a valid url= above.
+# Release build:
+#   Downloads release tarball from GitHub and verifies SHA256 integrity.
 #
 # Design: the app code lives in a venv under /opt/raycast-linux (PEP 668
 # safe on Arch); its Python runtime dependencies are ordinary Arch packages
-# (python-fastapi, python-uvicorn, …) pulled in via depends=.
+# (python-fastapi, uvicorn, ...) pulled in via depends=.
 
 pkgname=raycast-linux
 pkgver=1.0.0
 pkgrel=1
 pkgdesc="Raycast-style launcher and productivity hub for Linux (native GTK4 + Python)"
 arch=(any)
-url="https://example.invalid/raycast-linux"  # ← set to your real repository URL
+url="https://github.com/aaronwesthoff84/Linux-raycast-ArenaAI"
 license=(MIT)
 depends=(
   python
-  python-venv
   python-gobject        # PyGObject (gi)
   gtk4
   python-fastapi
-  python-uvicorn
+  uvicorn
   python-httpx
   python-pydantic
   wl-clipboard          # wl-copy / wl-paste (Wayland clipboard)
@@ -47,11 +44,11 @@ optdepends=(
   "wmctrl: next/previous window cycling on X11"
   "xclip: clipboard support on X11"
 )
-source=("$pkgname-$pkgver.tar.gz")
-sha256sums=(SKIP)  # local builds: tarball produced by build-source.sh
+source=("$pkgname-$pkgver.tar.gz::$url/releases/download/v$pkgver/$pkgname-$pkgver.tar.gz")
+sha256sums=('1584e3e6864b3d37dffe4d64f00ffd06eff243dddf04505b5fb5462fdcf7bdc9')
 
 package() {
-  # App code → venv under /opt (PEP 668 safe). Runtime Python deps come
+  # App code -> venv under /opt (PEP 668 safe). Runtime Python deps come
   # from the Arch packages in depends=, so --no-deps here.
   python -m venv --system-site-packages "$pkgdir/opt/$pkgname/.venv"
   "$pkgdir/opt/$pkgname/.venv/bin/pip" install \
@@ -70,4 +67,8 @@ EOF
     "$pkgdir/usr/share/applications/raycast-linux.desktop"
   install -Dm644 "$srcdir/$pkgname-$pkgver/files/raycast-linux.svg" \
     "$pkgdir/usr/share/icons/hicolor/scalable/apps/raycast-linux.svg"
+
+  # Helper uninstall script
+  install -Dm755 "$srcdir/$pkgname-$pkgver/uninstall.sh" \
+    "$pkgdir/opt/$pkgname/uninstall.sh"
 }

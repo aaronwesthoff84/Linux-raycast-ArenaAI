@@ -9,7 +9,7 @@ import os
 import sys
 
 
-def run_gui(show_settings: bool = False) -> int:
+def run_gui(show_settings: bool = False, show_setup: bool = False) -> int:
     try:
         import gi
         gi.require_version("Gtk", "4.0")
@@ -38,7 +38,7 @@ def run_gui(show_settings: bool = False) -> int:
     )
     write_api(port)
     try:
-        app = RaycastLinuxApp(hub=hub, port=port, show_settings=show_settings)
+        app = RaycastLinuxApp(hub=hub, port=port, show_settings=show_settings, show_setup=show_setup)
         return int(app.run([]))
     finally:
         remove_api()
