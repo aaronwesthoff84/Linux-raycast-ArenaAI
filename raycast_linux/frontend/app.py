@@ -52,7 +52,12 @@ class RaycastLinuxApp(Gtk.Application):
 
     def do_activate(self) -> None:
         assert self.palette is not None
-        self.palette.present()
+        if self.show_setup:
+            self.open_setup()
+        elif self.show_settings:
+            self.open_settings()
+        else:
+            self.palette.present()
 
     def do_shutdown(self) -> None:
         self.api.shutdown()

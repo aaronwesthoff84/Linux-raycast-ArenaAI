@@ -74,12 +74,7 @@ class PaletteWindow(Gtk.Window):
         self.set_size_request(self.WIDTH, 240)
         self.set_resizable(False)
         self.set_decorated(False)
-        self.set_skip_taskbar_hint(True)
-        self.set_skip_pager_hint(True)
-        self.set_keep_above(True)
-        self.set_stickiness(Gtk.WindowStickiness.GLOBAL)
-        self.set_type_hint(Gdk.WindowTypeHint.UTILITY)
-        self.set_position(Gtk.WindowPosition.CENTER)
+        self.set_title("Raycast Linux")
 
         root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         root.set_css_classes(["palette-root"])
@@ -105,7 +100,7 @@ class PaletteWindow(Gtk.Window):
         for key, label in CATEGORIES:
             b = Gtk.Button(label=label)
             b.add_css_class("chip")
-            b.set_on_focus(False)
+            b.set_focusable(False)
             b.connect("clicked", self._on_chip_clicked, key)
             chips.append(b)
             self._chips[key] = b
@@ -125,8 +120,10 @@ class PaletteWindow(Gtk.Window):
         self.status.set_css_classes(["palette-status"])
         root.append(self.status)
 
-        self.connect("key-press-event", self._on_key)
-        self.connect("show", self._on_show)
+        key_ctrl = Gtk.EventControllerKey.new()
+        key_ctrl.connect("key-pressed", self._on_key_pressed)
+        self.add_controller(key_ctrl)
+        self.connect("notify::visible", self._on_visible_changed)
         self._set_chip("general")
         self._set_status("Loading…")
         self.api_get("/api/env", on_result=self._on_env)
@@ -155,8 +152,16 @@ class PaletteWindow(Gtk.Window):
         base = self._base_status
         self.status.set_text(f"{text}    {base}".strip() if base else text)
 
+    def _on_visible_changed(self, _obj, _pspec) -> None:
+        if self.get_visible():
+            self._on_show()
+
+    def present(self) -> None:
+        super().present()
+        self._on_show()
+
     # --------------------------------------------------------------- events
-    def _on_show(self, _w) -> None:
+    def _on_show(self, _w=None) -> None:
         # Remember the focused window before we steal focus (X11 refocus).
         self.api_post("/api/windows/stash-active")
         self.entry.grab_focus()
@@ -395,8 +400,7 @@ class PaletteWindow(Gtk.Window):
         self._refresh_results()
 
     # ------------------------------------------------------------- keyboard
-    def _on_key(self, _w, event) -> bool:
-        keyval = event.keyval
+    def _on_key_pressed(self, _controller, keyval, _keycode, state) -> bool:
         if keyval == Gdk.KEY_Escape:
             self.hide()
             return True
@@ -416,21 +420,21 @@ class PaletteWindow(Gtk.Window):
             self._activate_selected()
             return True
         if keyval == Gdk.KEY_Tab:
-            delta = 1 if not (event.state & Gdk.ModifierType.SHIFT_MASK) else -1
+            delta = 1 if not (state & Gdk.ModifierType.SHIFT_MASK) else -1
             self._cycle_category(delta)
             return True
         return False
 
     def _move(self, delta: int) -> None:
-        n = self.listbox.get_children().get_n_children()
-        if n == 0:
+        total_items = (1 if self.calc_row is not None else 0) + len(self.results)
+        if total_items == 0:
             return
-        self.selected = (self.selected + delta) % n
+        self.selected = (self.selected + delta) % total_items
         self._sync_row_styles()
         self._ensure_visible()
 
     def _sync_row_styles(self) -> None:
-        child = self.listbox.get_children().get_first()
+        child = self.listbox.get_first_child()
         i = 0
         while child is not None:
             if i == self.selected:
