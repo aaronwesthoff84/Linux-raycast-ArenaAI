@@ -1,26 +1,19 @@
-"""Global shortcut registration through the XDG GlobalShortcuts portal.
+"""Global shortcut registration through the official XDG GlobalShortcuts portal.
 
-GNOME and KDE implement ``org.freedesktop.portal.GlobalShortcuts``. This
-module registers a handler object on the session bus; when the user presses
-the chosen combination (default ``super+space``) the portal:
+Implements org.freedesktop.portal.GlobalShortcuts according to the freedesktop spec:
+  https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.GlobalShortcuts.html
 
-  1. calls ``GetStatus()`` on our handler object (liveness check),
-  2. emits an ``Activate`` signal *on our object path* — which we catch with
-     a bus-wide signal receiver filtered to our path.
+Workflow:
+  1. CreateSession(options) -> Request object path
+  2. Wait for Request.Response signal -> yields session_handle
+  3. BindShortcuts(session_handle, shortcuts, parent_window, options) -> Request object path
+  4. Wait for Request.Response signal -> binds shortcut
+  5. Listen for Activated signal on org.freedesktop.portal.GlobalShortcuts
+  6. On unregister / exit -> call Session.Close() on session_handle
 
-Best-effort by design:
-  * needs ``python3-dbus`` (system package) — without it we return a message
-    with the compositor-level fallback (bind ``raycast-linux toggle``).
-  * on compositors without a portal implementation the registration fails
-    gracefully with the same fallback message.
-
-Compositor fallbacks (always work, no portal needed):
-  sway:      bindsym $mod+space exec raycast-linux
-  Hyprland:  bind =SUPER,SPC, exec, raycast-linux
-  KDE:       System Settings → Shortcuts → Custom Shortcuts → new global
-             shortcut → Command to Run: raycast-linux
-  GNOME:     Settings → Keyboard → Custom Shortcuts → New shortcut
-             (Super+Space) → raycast-linux
+Best-effort with clear fallback:
+  * If python3-dbus is absent or the desktop portal is unavailable, registration
+    fails gracefully and returns instructions for compositor bindings.
 """
 from __future__ import annotations
 
@@ -30,13 +23,13 @@ import time
 
 log = logging.getLogger("raycast-linux.shortcuts")
 
-PORTAL_IFACE = "org.freedesktop.portal.GlobalShortcuts"
-SHORTCUT_IFACE = "org.freedesktop.portal.GlobalShortcuts.Shortcut"
 PORTAL_SERVICE = "org.freedesktop.portal.Desktop"
 PORTAL_PATH = "/org/freedesktop/portal/desktop"
-HANDLER_BUS_NAME = "dev.arena.raycast_linux.shortcut"
-HANDLER_PATH = "/dev/arena/raycast_linux/shortcut"
-SESSION_PATH = "/dev/arena/raycast_linux/session"
+PORTAL_IFACE = "org.freedesktop.portal.GlobalShortcuts"
+REQUEST_IFACE = "org.freedesktop.portal.Request"
+SESSION_IFACE = "org.freedesktop.portal.Session"
+
+SHORTCUT_ID = "toggle_palette"
 
 _FALLBACK_MSG = (
     "Global shortcut not registered via the portal. Bind the key in your "
@@ -46,18 +39,32 @@ _FALLBACK_MSG = (
 )
 
 
+def _get_dbus():
+    """Import dbus dependencies safely."""
+    try:
+        import dbus
+        try:
+            from dbus.mainloop.glib import DBusGMainLoop
+            DBusGMainLoop(set_as_default=True)
+        except Exception:
+            pass
+        return dbus, None
+    except ImportError as err:
+        return None, err
+
+
 class GlobalShortcutPortal:
     """Registers one global shortcut with the portal; emits via callback."""
 
     def __init__(self) -> None:
         self._bus = None
-        self._handler = None
-        self._session_obj = None
+        self._session_handle: str | None = None
         self._shortcut_id: str | None = None
         self._shortcut_string: str | None = None
         self._on_activate = None
         self._lock = threading.Lock()
-        self.status = "unregistered"
+        self._status_str = "unregistered"
+        self._signal_receivers = []
 
     # -- API used by the server -------------------------------------------
     def set_on_activate(self, callback) -> None:
@@ -65,7 +72,7 @@ class GlobalShortcutPortal:
 
     @property
     def registered(self) -> bool:
-        return self.status == "registered"
+        return self._status_str == "registered"
 
     @property
     def shortcut_id(self) -> str | None:
@@ -78,95 +85,128 @@ class GlobalShortcutPortal:
     def register(self, shortcut: str = "super+space") -> dict:
         if self._on_activate is None:
             return {"ok": False, "message": "No activation handler attached"}
-        try:
-            import dbus  # python3-dbus (system package)
-            import dbus.service
-        except ImportError:
+
+        dbus, err = _get_dbus()
+        if dbus is None:
             return {
                 "ok": False,
-                "message": _FALLBACK_MSG + "  (install python3-dbus to try the portal again)",
+                "message": _FALLBACK_MSG + f"  (python3-dbus not available: {err})",
             }
+
         with self._lock:
-            if self._shortcut_id:
+            if self._shortcut_id and self.registered:
                 return {"ok": True, "message": f"Already registered as {self._shortcut_id}"}
+
             try:
                 bus = dbus.SessionBus()
-                bus.request_name(HANDLER_BUS_NAME)
-
-                portal = self
-
-                class _Handler(dbus.service.Object):
-                    """org.freedesktop.portal.GlobalShortcuts.Shortcut."""
-
-                    @dbus.service.method(SHORTCUT_IFACE, out_signature="u")
-                    def GetStatus(self):
-                        # 0=unregistered, 1=registering, 2=registered
-                        return dbus.UInt32(2 if portal._shortcut_id else 1)
-
-                    @dbus.service.method(SHORTCUT_IFACE, in_signature="a{sv}")
-                    def UpdateProperties(self, properties):
-                        return None
-
-                    @dbus.service.method(SHORTCUT_IFACE)
-                    def Destroy(self):
-                        threading.Thread(target=portal.unregister, daemon=True).start()
-                        return None
-
-                self._session_obj = dbus.service.Object(bus, SESSION_PATH)
-                self._handler = _Handler(bus, HANDLER_PATH)
-                bus.add_signal_receiver(
-                    self._signal_activated,
-                    sender_name=None,  # the portal emits the signal
-                    signal_name="Activate",
-                    interface_name=SHORTCUT_IFACE,
-                    path_keyword="path",
-                )
-
                 proxy = bus.get_object(PORTAL_SERVICE, PORTAL_PATH)
                 iface = dbus.Interface(proxy, PORTAL_IFACE)
-                token = f"raycast-linux-{time.time_ns()}"
-                iface.Create(token, dbus.ObjectPath(SESSION_PATH),
-                             dbus.Dictionary({}, signature="sv"))
-                status, results = iface.CreateShortcut(
-                    token,
-                    dbus.ObjectPath(HANDLER_PATH),
-                    shortcut,
-                    dbus.Dictionary({}, signature="sv"),
+
+                # 1. CreateSession
+                session_token = f"raycast_{time.time_ns()}"
+                req_token = f"req_session_{time.time_ns()}"
+                create_opts = dbus.Dictionary({
+                    "session_handle_token": dbus.String(session_token, variant_level=1),
+                    "handle_token": dbus.String(req_token, variant_level=1),
+                }, signature="sv")
+
+                create_req_path = iface.CreateSession(create_opts)
+                sess_resp = self._wait_for_request(bus, dbus, create_req_path, timeout=4.0)
+                if sess_resp["status"] != 0:
+                    self._cleanup_bus(bus)
+                    return {
+                        "ok": False,
+                        "message": f"CreateSession rejected (status {sess_resp['status']}) — {_FALLBACK_MSG}",
+                    }
+
+                session_handle = str(sess_resp["results"].get("session_handle", ""))
+                if not session_handle:
+                    self._cleanup_bus(bus)
+                    return {
+                        "ok": False,
+                        "message": f"Portal returned no session handle — {_FALLBACK_MSG}",
+                    }
+
+                self._session_handle = session_handle
+
+                # 2. BindShortcuts
+                bind_token = f"req_bind_{time.time_ns()}"
+                shortcuts_data = [
+                    (
+                        SHORTCUT_ID,
+                        dbus.Dictionary({
+                            "description": dbus.String("Toggle Raycast Linux Palette", variant_level=1),
+                            "preferred_trigger": dbus.String(shortcut, variant_level=1),
+                        }, signature="sv"),
+                    )
+                ]
+                bind_opts = dbus.Dictionary({
+                    "handle_token": dbus.String(bind_token, variant_level=1),
+                }, signature="sv")
+
+                bind_req_path = iface.BindShortcuts(
+                    dbus.ObjectPath(session_handle),
+                    shortcuts_data,
+                    "",
+                    bind_opts,
                 )
-                results = dict(results)
-                if status != 0:  # 0 = success
-                    reason = str(results.get("message", "portal returned an error"))
-                    self._cleanup_bus()
-                    return {"ok": False, "message": f"{reason} — {_FALLBACK_MSG}"}
-                self._shortcut_id = str(results.get("id", ""))
-                self._shortcut_string = str(results.get("shortcut", shortcut))
-                self.status = "registered"
+                bind_resp = self._wait_for_request(bus, dbus, bind_req_path, timeout=4.0)
+                if bind_resp["status"] != 0:
+                    self._close_session(bus, dbus, session_handle)
+                    self._cleanup_bus(bus)
+                    return {
+                        "ok": False,
+                        "message": f"BindShortcuts rejected (status {bind_resp['status']}) — {_FALLBACK_MSG}",
+                    }
+
+                # 3. Listen for Activated signal on GlobalShortcuts interface
+                rx = bus.add_signal_receiver(
+                    self._on_activated_signal,
+                    signal_name="Activated",
+                    dbus_interface=PORTAL_IFACE,
+                    bus_name=PORTAL_SERVICE,
+                    path=PORTAL_PATH,
+                )
+                self._signal_receivers.append(rx)
+
+                self._shortcut_id = SHORTCUT_ID
+                self._shortcut_string = shortcut
+                self._status_str = "registered"
                 self._bus = bus
-                log.info("Global shortcut registered: %s", self._shortcut_string)
+                log.info("XDG GlobalShortcuts portal registered: %s (session %s)", shortcut, session_handle)
                 return {
                     "ok": True,
-                    "message": f"Global shortcut registered: {self._shortcut_string}",
+                    "message": f"Global shortcut registered: {shortcut}",
                     "id": self._shortcut_id,
                     "shortcut": self._shortcut_string,
                 }
             except Exception as e:  # noqa: BLE001
                 log.warning("Portal registration failed: %s", e)
-                self._cleanup_bus()
+                if self._session_handle and self._bus:
+                    self._close_session(self._bus, dbus, self._session_handle)
+                self._cleanup_bus(bus if 'bus' in locals() else None)
+                self._status_str = "unregistered"
                 return {
                     "ok": False,
-                    "message": f"Portal unavailable ({e.__class__.__name__}) — {_FALLBACK_MSG}",
+                    "message": f"Global shortcut not registered via the portal ({e.__class__.__name__}: {e}) — {_FALLBACK_MSG}",
                 }
 
     def unregister(self) -> dict:
         with self._lock:
-            if not self._shortcut_id:
-                self._cleanup_bus()
-                self.status = "unregistered"
+            if not self._session_handle:
+                self._cleanup_bus(self._bus)
+                self._status_str = "unregistered"
                 return {"ok": True, "message": "Nothing to unregister"}
+
+            dbus, _ = _get_dbus()
+            if self._bus and dbus:
+                self._close_session(self._bus, dbus, self._session_handle)
+
+            self._cleanup_bus(self._bus)
+            self._session_handle = None
             self._shortcut_id = None
             self._shortcut_string = None
-            self.status = "unregistered"
-        self._cleanup_bus()
+            self._status_str = "unregistered"
         return {"ok": True, "message": "Global shortcut unregistered"}
 
     def status(self) -> dict:
@@ -174,17 +214,44 @@ class GlobalShortcutPortal:
             "registered": self.registered,
             "id": self._shortcut_id,
             "shortcut": self._shortcut_string,
-            "status": self.status,
+            "status": self._status_str,
         }
 
     # -- internals -----------------------------------------------------------
-    def _signal_activated(self, path: str = "") -> None:
-        if path != HANDLER_PATH:
-            return  # another app's global shortcut firing
-        cb = self._on_activate
-        if cb:
-            # We're on the dbus-python bus thread — don't block it.
-            threading.Thread(target=self._fire, args=(cb,), daemon=True).start()
+    def _wait_for_request(self, bus, dbus, req_path: str, timeout: float = 4.0) -> dict:
+        """Wait synchronously for Request.Response signal on req_path."""
+        resp_data = {"status": -1, "results": {}}
+        evt = threading.Event()
+
+        def on_response(response, results):
+            resp_data["status"] = int(response)
+            resp_data["results"] = dict(results)
+            evt.set()
+
+        rx = bus.add_signal_receiver(
+            on_response,
+            signal_name="Response",
+            dbus_interface=REQUEST_IFACE,
+            path=req_path,
+        )
+        try:
+            evt.wait(timeout=timeout)
+        finally:
+            try:
+                if hasattr(rx, "remove"):
+                    rx.remove()
+                elif bus:
+                    bus.remove_signal_receiver(on_response, signal_name="Response", dbus_interface=REQUEST_IFACE, path=req_path)
+            except Exception:
+                pass
+        return resp_data
+
+    def _on_activated_signal(self, session_handle, shortcut_id, timestamp, options) -> None:
+        if self._session_handle and str(session_handle) == str(self._session_handle):
+            if str(shortcut_id) == str(self._shortcut_id):
+                cb = self._on_activate
+                if cb:
+                    threading.Thread(target=self._fire, args=(cb,), daemon=True).start()
 
     def _fire(self, cb) -> None:
         try:
@@ -192,16 +259,22 @@ class GlobalShortcutPortal:
         except Exception:  # noqa: BLE001
             log.exception("on_activate callback failed")
 
-    def _cleanup_bus(self) -> None:
-        bus, self._bus = self._bus, None
+    def _close_session(self, bus, dbus, session_handle: str) -> None:
         try:
-            if bus is not None:
-                if self._handler is not None:
-                    self._handler.remove_from_connection()
-                if self._session_obj is not None:
-                    self._session_obj.remove_from_connection()
-                bus.remove_signal_receiver(self._signal_activated)
-        except Exception:  # noqa: BLE001
-            log.debug("bus cleanup issue", exc_info=True)
-        self._handler = None
-        self._session_obj = None
+            session_proxy = bus.get_object(PORTAL_SERVICE, session_handle)
+            session_iface = dbus.Interface(session_proxy, SESSION_IFACE)
+            session_iface.Close()
+        except Exception as e:
+            log.debug("Error closing session: %s", e)
+
+    def _cleanup_bus(self, bus=None) -> None:
+        bus = bus or self._bus
+        if bus:
+            for rx in self._signal_receivers:
+                try:
+                    if hasattr(rx, "remove"):
+                        rx.remove()
+                except Exception:
+                    pass
+        self._signal_receivers.clear()
+        self._bus = None
