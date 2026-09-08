@@ -12,7 +12,7 @@ echo "→ creating venv ($REAL/.venv)"
 # shellcheck disable=SC1091
 source .venv/bin/activate
 pip install -q -U pip
-pip install -q -e .
+pip install -q -e ".[dev]"
 
 echo "→ verifying system GTK bindings in venv"
 if ! "$REAL/.venv/bin/python" -c "import gi; gi.require_version('Gtk', '4.0'); from gi.repository import Gtk" 2>/dev/null; then
