@@ -20,6 +20,7 @@ from ..platform import detect, typing
 from ..version import __version__
 from . import storage
 from .apps import AppService
+from .chat import ChatService
 from .clipboard import ClipboardService
 from .files import FileIndex
 from .shortcuts import GlobalShortcutPortal
@@ -55,6 +56,22 @@ class ShortcutBody(BaseModel):
     shortcut: str = "super+space"
 
 
+class ChatMessageBody(BaseModel):
+    prompt: str
+    stream: bool = False
+
+
+class ChatConfigBody(BaseModel):
+    provider: str | None = None
+    endpoint: str | None = None
+    api_key: str | None = None
+    model: str | None = None
+
+
+class ChatConversationBody(BaseModel):
+    title: str = "New Chat"
+
+
 class ServiceHub:
     """Owns every service instance. One hub per running app."""
 
@@ -65,6 +82,7 @@ class ServiceHub:
         self.files = FileIndex()
         self.windows = detect_provider()
         self.portal = GlobalShortcutPortal()
+        self.chat = ChatService()
         self.started = time.time()
         self.on_palette_toggle = None  # set by the frontend (thread-safe call)
 
@@ -243,6 +261,63 @@ def build_app(hub: ServiceHub) -> FastAPI:
             return {"ok": False, "message": "Frontend not running (server-only mode)"}
         cb()
         return {"ok": True, "message": "Palette toggled"}
+
+    # -- chat / agent ----------------------------------------------------------------
+    @app.get("/api/chat/config")
+    def chat_get_config() -> dict:
+        return hub.chat.get_config(mask_key=True)
+
+    @app.post("/api/chat/config")
+    def chat_update_config(body: ChatConfigBody) -> dict:
+        return hub.chat.update_config(
+            provider=body.provider,
+            endpoint=body.endpoint,
+            api_key=body.api_key,
+            model=body.model,
+        )
+
+    @app.get("/api/chat/conversations")
+    def chat_list_conversations() -> list[dict]:
+        return hub.chat.list_conversations()
+
+    @app.post("/api/chat/conversations")
+    def chat_create_conversation(body: ChatConversationBody) -> dict:
+        return hub.chat.create_conversation(title=body.title)
+
+    @app.get("/api/chat/conversations/{conv_id}")
+    def chat_get_conversation(conv_id: str) -> dict:
+        conv = hub.chat.get_conversation(conv_id)
+        if not conv:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        return conv
+
+    @app.delete("/api/chat/conversations/{conv_id}")
+    def chat_delete_conversation(conv_id: str) -> dict:
+        ok = hub.chat.delete_conversation(conv_id)
+        return {"ok": ok}
+
+    @app.post("/api/chat/conversations/{conv_id}/clear")
+    def chat_clear_conversation(conv_id: str) -> dict:
+        ok = hub.chat.clear_conversation(conv_id)
+        return {"ok": ok}
+
+    @app.post("/api/chat/conversations/{conv_id}/cancel")
+    def chat_cancel(conv_id: str) -> dict:
+        ok = hub.chat.cancel(conv_id)
+        return {"ok": ok}
+
+    @app.post("/api/chat/conversations/{conv_id}/messages")
+    async def chat_send_message(conv_id: str, body: ChatMessageBody):
+        from fastapi.responses import StreamingResponse
+        conv = hub.chat.get_conversation(conv_id)
+        if not conv:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        if body.stream:
+            stream_gen = await hub.chat.send_message(conv_id, body.prompt, stream=True)
+            return StreamingResponse(stream_gen, media_type="application/x-ndjson")
+        else:
+            res = await hub.chat.send_message(conv_id, body.prompt, stream=False)
+            return res
 
     return app
 

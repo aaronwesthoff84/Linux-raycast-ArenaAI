@@ -21,6 +21,7 @@ from ..logic.units import try_convert
 
 CATEGORIES = [
     ("general", "General"),
+    ("chat", "Chat"),
     ("apps", "Apps"),
     ("files", "Files"),
     ("clipboard", "Clipboard"),
@@ -37,6 +38,7 @@ _PREFIX_MAP = {
     "snippet": "snippets", "snippets": "snippets",
     "win": "windows", "window": "windows", "windows": "windows",
     "settings": "settings", "config": "settings",
+    "chat": "chat", "ai": "chat", "hermes": "chat", "agent": "chat",
 }
 
 _WINDOW_ACTION_LABELS = {
@@ -189,6 +191,14 @@ class PaletteWindow(Gtk.Window):
         if category == "settings":
             self._apply([], self._static_settings_items())
             return
+        if category == "chat":
+            q_label = f": {query}" if query else ""
+            self._apply([], [{
+                "kind": "chat", "id": "open-chat", "title": f"Chat with Hermes{q_label}",
+                "subtitle": "Ask Hermes Agent (Enter to open chat window)",
+                "icon": "user-available-symbolic",
+            }])
+            return
 
         limit = 8 if category == "general" else 40
 
@@ -320,6 +330,7 @@ class PaletteWindow(Gtk.Window):
 
     def _static_settings_items(self) -> list[dict]:
         return [
+            self._command_item("open-chat", "Open agent chat", "Chat with Hermes agent"),
             self._command_item("open-settings", "Open settings", "Preferences, snippets, shortcuts"),
             self._command_item("clear-clipboard", "Clear clipboard history", "Delete all stored clipboard items"),
             self._command_item("refresh-files", "Rebuild file index", "Scan $HOME again"),
@@ -471,6 +482,9 @@ class PaletteWindow(Gtk.Window):
             self._run_window_action(item["id"])
         elif kind == "command":
             self._run_command(item["id"])
+        elif kind == "chat":
+            self.app.open_chat()
+            self.hide()
 
     # -------------------------------------------------------- special flows
     def _expand_snippet(self, item: dict) -> None:
@@ -494,6 +508,9 @@ class PaletteWindow(Gtk.Window):
     def _run_command(self, id_: str) -> None:
         if id_ == "open-settings":
             self.app.open_settings()
+            self.hide()
+        elif id_ == "open-chat":
+            self.app.open_chat()
             self.hide()
         elif id_ == "clear-clipboard":
             self.api_post("/api/clipboard/clear",

@@ -1,6 +1,8 @@
 """Settings window: platform info, global shortcut, snippets, clipboard, files."""
 from __future__ import annotations
 
+import gi
+gi.require_version("Gtk", "4.0")
 from gi.repository import Gtk, Pango
 
 
@@ -21,7 +23,7 @@ def _section(title: str) -> Gtk.Box:
 
 class SettingsWindow(Gtk.ApplicationWindow):
     def __init__(self, app) -> None:
-        super().__init__(application=app, title="Raycast Linux — Settings")
+        super().__init__(application=app, title="Raycast Linux: Settings")
         self.app = app
         self.set_default_size(560, 640)
         self._selected_snippet: str | None = None
@@ -129,6 +131,43 @@ class SettingsWindow(Gtk.ApplicationWindow):
         fi.append(frow)
         root.append(fi)
 
+        # -- chat / ai --------------------------------------------------------------
+        chat_sec = _section("Chat & AI (Hermes Agent)")
+        self._chat_status = _label("", "settings-value")
+        chat_sec.append(self._chat_status)
+
+        cgrid = Gtk.Grid()
+        cgrid.set_row_spacing(6)
+        cgrid.set_column_spacing(10)
+
+        cgrid.attach(_label("Endpoint", "settings-key"), 0, 0, 1, 1)
+        self._chat_endpoint = Gtk.Entry()
+        self._chat_endpoint.set_hexpand(True)
+        self._chat_endpoint.set_placeholder_text("http://localhost:8000/v1")
+        cgrid.attach(self._chat_endpoint, 1, 0, 1, 1)
+
+        cgrid.attach(_label("Model", "settings-key"), 0, 1, 1, 1)
+        self._chat_model = Gtk.Entry()
+        self._chat_model.set_hexpand(True)
+        self._chat_model.set_placeholder_text("hermes-3-llama-3.1-8b")
+        cgrid.attach(self._chat_model, 1, 1, 1, 1)
+
+        cgrid.attach(_label("API Key", "settings-key"), 0, 2, 1, 1)
+        self._chat_api_key = Gtk.Entry()
+        self._chat_api_key.set_hexpand(True)
+        self._chat_api_key.set_visibility(False)
+        self._chat_api_key.set_placeholder_text("Optional or masked")
+        cgrid.attach(self._chat_api_key, 1, 2, 1, 1)
+
+        chat_sec.append(cgrid)
+
+        crow = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        save_chat = Gtk.Button(label="Save Chat Config")
+        save_chat.connect("clicked", self._on_chat_save)
+        crow.append(save_chat)
+        chat_sec.append(crow)
+        root.append(chat_sec)
+
         self._load_all()
 
     # ------------------------------------------------------------------ api
@@ -155,6 +194,7 @@ class SettingsWindow(Gtk.ApplicationWindow):
         self.api_get("/api/clipboard", on_result=lambda r, e: self._on_clipboard(r))
         self.api_get("/api/files", params={"query": "", "limit": 1},
                      on_result=lambda r, e: self._on_files(r))
+        self.api_get("/api/chat/config", on_result=lambda r, e: self._on_chat_config(r))
 
     def _on_env(self, r: dict | None) -> None:
         if not r:
@@ -266,3 +306,32 @@ class SettingsWindow(Gtk.ApplicationWindow):
         self._files_status.set_text("rebuilding…")
         self.api_get("/api/files", params={"query": "", "refresh": True},
                      on_result=lambda r, e: self._on_files(r))
+
+    def _on_chat_config(self, r: dict | None) -> None:
+        if not r:
+            return
+        endpoint = r.get("endpoint", "")
+        model = r.get("model", "")
+        masked_key = r.get("api_key", "")
+        self._chat_endpoint.set_text(endpoint)
+        self._chat_model.set_text(model)
+        if masked_key:
+            self._chat_api_key.set_text(masked_key)
+        self._chat_status.set_text(f"Provider: {r.get('provider', 'hermes')} (Model: {model})")
+
+    def _on_chat_save(self, _b) -> None:
+        endpoint = self._chat_endpoint.get_text().strip()
+        model = self._chat_model.get_text().strip()
+        key = self._chat_api_key.get_text().strip()
+        payload = {
+            "provider": "hermes",
+            "endpoint": endpoint or "http://localhost:8000/v1",
+            "model": model or "hermes-3-llama-3.1-8b",
+        }
+        if key and not key.startswith("••••"):
+            payload["api_key"] = key
+        self.api_post("/api/chat/config", payload, on_result=lambda r, e: (
+            self._notify("Chat configuration saved" if not e else str(e)),
+            self.api_get("/api/chat/config", on_result=lambda r2, _e2: self._on_chat_config(r2))
+        ))
+

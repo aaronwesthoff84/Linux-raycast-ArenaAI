@@ -7,6 +7,7 @@ from gi.repository import Gdk, GLib, Gtk
 
 from ..version import __version__
 from .api_client import ApiClient
+from .chat_window import ChatWindow
 from .palette import PaletteWindow
 from .settings import SettingsWindow
 
@@ -28,6 +29,7 @@ class RaycastLinuxApp(Gtk.Application):
 
         self.palette: PaletteWindow | None = None
         self.settings_win: SettingsWindow | None = None
+        self.chat_win: ChatWindow | None = None
 
     # -- Gtk.Application vfunc overrides ---------------------------------
     def do_startup(self) -> None:
@@ -64,6 +66,11 @@ class RaycastLinuxApp(Gtk.Application):
         if self.settings_win is None:
             self.settings_win = SettingsWindow(self)
         self.settings_win.present()
+
+    def open_chat(self) -> None:
+        if self.chat_win is None:
+            self.chat_win = ChatWindow(self)
+        self.chat_win.present()
 
     def notify(self, summary: str, body: str = "") -> None:
         try:
