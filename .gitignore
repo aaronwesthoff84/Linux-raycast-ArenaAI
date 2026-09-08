@@ -19,3 +19,4 @@ packaging/raycast-linux-*.tar.gz
 # Local state
 *.log
 .antigravitycli/
+.agents/
