@@ -19,7 +19,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "httpx2"]
 
 [project.scripts]
 raycast-linux = "raycast_linux.cli:main"
